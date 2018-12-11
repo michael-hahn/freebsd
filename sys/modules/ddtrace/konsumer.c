@@ -473,6 +473,12 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	size_t size;
 	uintptr_t dest;
 	int nrecs;
+
+	dtrace_fmtdesc_t fmt;
+	int nformats;
+	char* str;
+	int length;
+	uint16_t fd_format;
 	
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL."));
 	DL_ASSERT(konsumer != NULL,
@@ -630,6 +636,48 @@ konsumer_open(void *arg, struct dtrace_state *state)
 		}
 
 		//deallocate buf
+		kmem_free(buf, size);
+	}
+
+	/* Copy format string metadata to dlog.
+	 */
+	mutex_enter(&dtrace_lock);
+	
+	nformats = state->dts_nformats;
+
+	mutex_exit(&dtrace_lock);
+
+	for (fd_format = 0; fd_format < nformats; fd_format++) {
+
+		mutex_enter(&dtrace_lock);
+
+		DL_ASSERT(state->dts_formats != NULL, ("state does not have format metadata information.\n"));
+		str = state->dts_formats[fd_format + 1];
+		DL_ASSERT(str != NULL, ("There exists no string format to read from."));
+		
+		length = strlen(str) + 1;
+
+		fmt.dtfd_length = length;
+		fmt.dtfd_format = fd_format + 1;
+		fmt.dtfd_string = NULL;
+
+		size = sizeof(dtrace_fmtdesc_t) + length;
+		buf = kmem_alloc(size, KM_SLEEP);
+		dest = (uintptr_t)buf;
+
+		bcopy(&fmt, (void *)dest, sizeof(dtrace_fmtdesc_t));
+
+		dest += sizeof(dtrace_fmtdesc_t);
+		bcopy(str, (void *)dest, length);
+
+		mutex_exit(&dtrace_lock);
+
+		// write to dlog
+		// write format metedata first and then the string
+		// fmt.dtfd_string pointer is set to be NULL.
+		if (dlog_produce(handle, KONSUMER_KEY, strlen(KONSUMER_KEY), buf, size) != 0) {
+			DLOGTR0(PRIO_HIGH, "Error producing format string metedata message to DLog\n");
+		}
 		kmem_free(buf, size);
 	}
 }
