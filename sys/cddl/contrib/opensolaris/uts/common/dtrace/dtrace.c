@@ -12136,7 +12136,7 @@ dtrace_ecb_create_enable(dtrace_probe_t *probe, void *arg)
 	return (DTRACE_MATCH_NEXT);
 }
 
-static dtrace_ecb_t *
+dtrace_ecb_t *
 dtrace_epid2ecb(dtrace_state_t *state, dtrace_epid_t id)
 {
 	dtrace_ecb_t *ecb;

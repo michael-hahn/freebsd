@@ -473,12 +473,6 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	size_t size;
 	uintptr_t dest;
 	int nrecs;
-
-	dtrace_fmtdesc_t fmt;
-	int nformats;
-	char* str;
-	int length;
-	uint16_t fd_format;
 	
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL."));
 	DL_ASSERT(konsumer != NULL,
@@ -587,12 +581,12 @@ konsumer_open(void *arg, struct dtrace_state *state)
 
 		if ((ecb = dtrace_epid2ecb(state, epid)) == NULL) {
 			mutex_exit(&dtrace_lock);
-			return (EINVAL);
+			DL_ASSERT(ecb != NULL, ("Failed to obtain an ECB."));
 		}
 
 		if (ecb->dte_probe == NULL) {
 			mutex_exit(&dtrace_lock);
-			return (EINVAL);
+			DL_ASSERT(ecb->dte_probe != NULL, ("ECB dte_probe pointer should not be NULL"));
 		}
 
 		epdesc.dtepd_epid = epid;
