@@ -466,6 +466,20 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	uint32_t hash;
 	int rc;
 	
+	dtrace_eprobedesc_t epdesc;
+	dtrace_ecb_t *ecb;
+	dtrace_action_t *act;
+	void *buf;
+	size_t size;
+	uintptr_t dest;
+	int nrecs;
+
+	dtrace_fmtdesc_t fmt;
+	int nformats;
+	char* str;
+	int length;
+	uint16_t fd_format;
+	
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL."));
 	DL_ASSERT(konsumer != NULL,
 	    ("DTrace konsumer instance cannot be NULL."));
@@ -563,6 +577,67 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	hash = murmur3_32_hash(&state, sizeof(struct dtrace_state *), 0) &
 	    konsumer_hashmask;
 	LIST_INSERT_HEAD(&konsumer_hashtbl[hash], k, konsumer_entries);
+
+	/* Once the konsumer is instantiated, we obtain metadata of each
+	 * ECB and write them to the beginning of the log DLog.
+	 * This is similar to the DTRACE_EPROBE ioctl operation.
+	 */
+	for (epid = 1; epid < state->dts_epid; epid++) {
+		mutex_enter(&dtrace_lock);
+
+		if ((ecb = dtrace_epid2ecb(state, epid)) == NULL) {
+			mutex_exit(&dtrace_lock);
+			return (EINVAL);
+		}
+
+		if (ecb->dte_probe == NULL) {
+			mutex_exit(&dtrace_lock);
+			return (EINVAL);
+		}
+
+		epdesc.dtepd_epid = epid;
+		epdesc.dtepd_probeid = ecb->dte_probe->dtpr_id;
+		epdesc.dtepd_uarg = ecb->dte_uarg;
+		epdesc.dtepd_size = ecb->dte_size;
+
+		epdesc.dtepd_nrecs = 0;
+		for (act = ecb->dte_action; act != NULL; act = act->dta_next) {
+			if (DTRACEACT_ISAGG(act->dta_kind) || act->dta_intuple)
+				continue;
+			epdesc.dtepd_nrecs++;
+		}
+
+		nrecs = epdesc.dtepd_nrecs;
+		size = sizeof(dtrace_eprobedesc_t) + (epdesc.dtepd_nrecs * sizeof(dtrace_recdesc_t));
+		
+		buf = kmem_alloc(size, KM_SLEEP);
+		dest = (uintptr_t)buf;
+
+		bcopy(&epdesc, (void *)dest, sizeof(epdesc));
+
+		dest += offsetof(dtrace_eprobedesc_t, dtepd_rec[0]);
+
+		for (act = ecb->dte_action; act != NULL; act = act->dta_next) {
+			if(DTRACEACT_ISAGG(act->dta_kind) || act->dta_intuple)
+				continue;
+
+			if (nrecs-- == 0)
+				break;
+
+			bcopy(&act->dta_rec, (void *)dest, sizeof(dtrace_recdesc_t));
+			dest += sizeof(dtrace_recdesc_t);
+		}
+
+		mutex_exit(&dtrace_lock);
+
+		//write to DLog
+		if (dlog_produce(handle, KONSUMER_KEY, strlen(KONSUMER_KEY), buf, size) != 0) {
+			DLOGTR0(PRIO_HIGH, "Error producing ecb desc message to DLog\n");
+		}
+
+		//deallocate buf
+		kmem_free(buf, size);
+	}
 }
 
 static void
