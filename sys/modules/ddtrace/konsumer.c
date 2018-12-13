@@ -610,7 +610,7 @@ konsumer_open(void *arg, struct dtrace_state *state)
 		nrecs = epdesc.dtepd_nrecs;
 		size = sizeof(dtrace_eprobedesc_t) + (epdesc.dtepd_nrecs * sizeof(dtrace_recdesc_t));
 		
-		buf = kmem_alloc(size, KM_SLEEP);
+		buf = malloc(size, M_DLKON, M_WAITOK);
 		dest = (uintptr_t)buf;
 
 		bcopy(&epdesc, (void *)dest, sizeof(epdesc));
@@ -636,7 +636,7 @@ konsumer_open(void *arg, struct dtrace_state *state)
 		}
 
 		//deallocate buf
-		kmem_free(buf, size);
+		free(buf, M_DLKON);
 	}
 
 	/* Copy format string metadata to dlog.
@@ -662,7 +662,7 @@ konsumer_open(void *arg, struct dtrace_state *state)
 		fmt.dtfd_string = NULL;
 
 		size = sizeof(dtrace_fmtdesc_t) + length;
-		buf = kmem_alloc(size, KM_SLEEP);
+		buf = malloc(size, M_DLKON, M_WAITOK);
 		dest = (uintptr_t)buf;
 
 		bcopy(&fmt, (void *)dest, sizeof(dtrace_fmtdesc_t));
@@ -678,7 +678,7 @@ konsumer_open(void *arg, struct dtrace_state *state)
 		if (dlog_produce(handle, KONSUMER_KEY, strlen(KONSUMER_KEY), buf, size) != 0) {
 			DLOGTR0(PRIO_HIGH, "Error producing format string metedata message to DLog\n");
 		}
-		kmem_free(buf, size);
+		free(buf, M_DLKON);
 	}
 }
 
